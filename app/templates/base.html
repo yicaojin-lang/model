@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}多模型盲测评估工具{% endblock %}</title>
+  <!-- API key embedded for in-browser fetch calls to /api/* routes -->
+  <meta name="x-api-key" content="{{ api_key }}">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script>
+    // Shared helper: wraps fetch() and injects the X-API-Key header automatically.
+    function apiFetch(url, options = {}) {
+      const key = document.querySelector('meta[name="x-api-key"]').content;
+      options.headers = Object.assign({ 'X-API-Key': key }, options.headers || {});
+      return fetch(url, options);
+    }
+  </script>
+  <style>
+    [x-cloak] { display: none !important; }
+    .prose-response { white-space: pre-wrap; word-break: break-word; }
+    .star-btn { cursor: pointer; transition: color 0.15s, transform 0.1s; }
+    .star-btn:hover { transform: scale(1.2); }
+  </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans">
+<div class="flex h-full min-h-screen">
+
+  <!-- ── Sidebar ───────────────────────────────────────────────────────────── -->
+  <aside class="w-60 bg-slate-900 text-slate-100 flex flex-col flex-shrink-0 shadow-xl">
+    <div class="px-5 py-5 border-b border-slate-700">
+      <div class="flex items-center gap-2">
+        <span class="text-2xl">🔬</span>
+        <div>
+          <div class="font-bold text-white leading-tight text-sm">多模型盲测</div>
+          <div class="text-xs text-slate-400 leading-tight">评估工具</div>
+        </div>
+      </div>
+    </div>
+
+    <nav class="flex-1 p-3 space-y-0.5 text-sm">
+      <a href="/"
+         class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-slate-700 transition-colors
+                {% if request.url.path == '/' %}bg-slate-700 text-white{% else %}text-slate-300{% endif %}">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+        </svg>
+        控制台
+      </a>
+
+      <a href="/benchmarks"
+         class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-slate-700 transition-colors
+                {% if '/benchmarks' in request.url.path %}bg-slate-700 text-white{% else %}text-slate-300{% endif %}">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+        </svg>
+        测试集管理
+      </a>
+
+      <a href="/runs"
+         class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-slate-700 transition-colors
+                {% if '/runs' in request.url.path %}bg-slate-700 text-white{% else %}text-slate-300{% endif %}">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M13 10V3L4 14h7v7l9-11h-7z"/>
+        </svg>
+        评测任务
+      </a>
+    </nav>
+
+    <div class="px-4 py-3 border-t border-slate-700">
+      <div class="flex items-center gap-2 text-xs text-slate-500">
+        <span class="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+        完全本地化 · 数据不出本机
+      </div>
+    </div>
+  </aside>
+
+  <!-- ── Main Content ──────────────────────────────────────────────────────── -->
+  <div class="flex-1 flex flex-col overflow-hidden">
+    <!-- Top bar -->
+    <header class="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between flex-shrink-0">
+      <h1 class="text-base font-semibold text-slate-700">{% block page_title %}{% endblock %}</h1>
+      <div class="flex items-center gap-2">
+        {% block header_actions %}{% endblock %}
+      </div>
+    </header>
+
+    <!-- Page body -->
+    <main class="flex-1 overflow-auto p-6">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+
+</div>
+</body>
+</html>

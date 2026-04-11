@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}发起评测 · 多模型盲测评估工具{% endblock %}
+{% block page_title %}发起新评测{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto" x-data="newRunForm()">
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-6">
+
+    <!-- Run name -->
+    <div>
+      <label class="block text-sm font-medium text-slate-700 mb-1">评测任务名称 <span class="text-red-500">*</span></label>
+      <input type="text" x-model="name" placeholder="例：GPT vs Llama 代码能力对比 2024-06"
+             class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent" />
+    </div>
+
+    <!-- Benchmark selection -->
+    <div>
+      <label class="block text-sm font-medium text-slate-700 mb-1">选择测试集 <span class="text-red-500">*</span></label>
+      {% if benchmarks %}
+      <div class="space-y-2">
+        {% for b in benchmarks %}
+        <label class="flex items-start gap-3 p-3 border rounded-lg cursor-pointer transition-colors"
+               :class="benchmarkId === {{ b.id }} ? 'border-indigo-400 bg-indigo-50' : 'border-slate-200 hover:border-slate-300'">
+          <input type="radio" x-model.number="benchmarkId" value="{{ b.id }}" class="mt-0.5 accent-indigo-600" />
+          <div class="flex-1 min-w-0">
+            <div class="font-medium text-sm text-slate-700">{{ b.name }}</div>
+            {% if b.description %}
+            <div class="text-xs text-slate-500 mt-0.5 truncate">{{ b.description }}</div>
+            {% endif %}
+            <div class="text-xs text-slate-400 mt-0.5">{{ b.test_cases|length }} 个用例</div>
+          </div>
+        </label>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="border border-dashed border-slate-300 rounded-lg p-5 text-center">
+        <p class="text-sm text-slate-500">尚无测试集</p>
+        <a href="/benchmarks/new" class="text-xs text-indigo-600 hover:underline mt-1 inline-block">先创建一个测试集 →</a>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Model selection -->
+    <div>
+      <div class="flex items-center justify-between mb-1">
+        <label class="block text-sm font-medium text-slate-700">选择参与评测的模型 <span class="text-red-500">*</span></label>
+        <span class="text-xs text-slate-400">来自本地 Ollama</span>
+      </div>
+      {% if models %}
+      <div class="space-y-2 max-h-64 overflow-y-auto pr-1">
+        {% for m in models %}
+        <label class="flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors"
+               :class="selectedModels.includes('{{ m }}') ? 'border-indigo-400 bg-indigo-50' : 'border-slate-200 hover:border-slate-300'">
+          <input type="checkbox" :value="'{{ m }}'" x-model="selectedModels" class="accent-indigo-600" />
+          <div class="flex-1 min-w-0">
+            <div class="font-mono text-sm text-slate-700">{{ m }}</div>
+          </div>
+        </label>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="border border-dashed border-amber-300 bg-amber-50 rounded-lg p-4">
+        <p class="text-sm text-amber-700 font-medium">⚠️ 无法连接到 Ollama</p>
+        <p class="text-xs text-amber-600 mt-1">请确认 Ollama 正在运行：<code class="font-mono">ollama serve</code></p>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Memory note -->
+    <div class="flex items-start gap-2.5 p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-500">
+      <svg class="w-4 h-4 text-slate-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+      </svg>
+      <span>模型将按顺序逐个推理（<code class="font-mono">keep_alive=0</code>），确保统一内存每次只加载一个模型，防止内存溢出。</span>
+    </div>
+
+    <!-- Actions -->
+    <div class="flex items-center justify-end gap-3 pt-2 border-t border-slate-100">
+      <a href="/runs" class="px-4 py-2 text-sm text-slate-600 hover:text-slate-800">取消</a>
+      <button type="button" @click="submit()"
+              :disabled="saving || !name.trim() || !benchmarkId || selectedModels.length === 0"
+              class="px-5 py-2 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
+        <svg x-show="saving" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+        </svg>
+        <span x-text="saving ? '启动中…' : '开始评测'"></span>
+      </button>
+    </div>
+
+    <p x-show="error" x-text="error" class="text-sm text-red-600 text-right"></p>
+  </div>
+</div>
+
+<script>
+function newRunForm() {
+  const params = new URLSearchParams(window.location.search);
+  return {
+    name: '',
+    benchmarkId: params.get('benchmark_id') ? parseInt(params.get('benchmark_id')) : null,
+    selectedModels: [],
+    saving: false,
+    error: '',
+
+    async submit() {
+      this.error = '';
+      if (!this.name.trim() || !this.benchmarkId || this.selectedModels.length === 0) return;
+
+      this.saving = true;
+      try {
+        const resp = await apiFetch('/api/runs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: this.name.trim(),
+            benchmark_id: this.benchmarkId,
+            model_names: this.selectedModels,
+          }),
+        });
+        if (!resp.ok) {
+          const data = await resp.json();
+          throw new Error(data.detail || '启动失败');
+        }
+        const data = await resp.json();
+        window.location.href = `/runs/${data.id}`;
+      } catch (e) {
+        this.error = e.message;
+      } finally {
+        this.saving = false;
+      }
+    },
+  };
+}
+</script>
+{% endblock %}

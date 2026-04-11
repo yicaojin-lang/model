@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}{{ benchmark.name }} · 测试集{% endblock %}
+{% block page_title %}测试集详情{% endblock %}
+
+{% block header_actions %}
+  <a href="/runs/new?benchmark_id={{ benchmark.id }}"
+     class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700 transition-colors">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+    </svg>
+    发起评测
+  </a>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto space-y-5">
+
+  <!-- Meta card -->
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+    <div class="flex items-start justify-between">
+      <div>
+        <h2 class="text-xl font-bold text-slate-800">{{ benchmark.name }}</h2>
+        {% if benchmark.description %}
+        <p class="text-sm text-slate-500 mt-1">{{ benchmark.description }}</p>
+        {% endif %}
+        <div class="flex items-center gap-4 mt-3 text-xs text-slate-400">
+          <span>{{ benchmark.test_cases|length }} 个测试用例</span>
+          <span>{{ benchmark.runs|length }} 次评测</span>
+          <span>创建于 {{ benchmark.created_at.strftime('%Y-%m-%d %H:%M') }}</span>
+        </div>
+      </div>
+      <button
+        onclick="if(confirm('确认删除整个测试集（含所有评测记录）？')){
+          apiFetch('/api/benchmarks/{{ benchmark.id }}',{method:'DELETE'}).then(()=>window.location='/benchmarks')
+        }"
+        class="text-xs text-red-400 hover:text-red-600 border border-red-200 hover:border-red-400 px-2.5 py-1.5 rounded-lg transition-colors">
+        删除测试集
+      </button>
+    </div>
+  </div>
+
+  <!-- Test cases -->
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm">
+    <div class="px-5 py-4 border-b border-slate-100">
+      <h3 class="font-semibold text-slate-700">测试用例</h3>
+    </div>
+    <div class="divide-y divide-slate-50">
+      {% for tc in benchmark.test_cases %}
+      <div class="px-5 py-4">
+        <div class="flex items-start gap-3">
+          <span class="flex-shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 text-xs font-bold flex items-center justify-center mt-0.5">
+            {{ loop.index }}
+          </span>
+            <div class="flex-1 min-w-0">
+            {% if tc.image_data %}
+            <div class="mb-2">
+              <img src="data:{{ tc.image_media_type or 'image/png' }};base64,{{ tc.image_data }}"
+                   class="max-h-32 w-auto rounded-lg border border-slate-200 object-contain" alt="附加图片" />
+            </div>
+            {% endif %}
+            <div class="text-sm text-slate-700 whitespace-pre-wrap font-mono bg-slate-50 rounded-lg p-3 border border-slate-100">{{ tc.prompt }}</div>
+            {% if tc.reference_answer %}
+            <details class="mt-2">
+              <summary class="text-xs text-slate-400 cursor-pointer hover:text-slate-600">参考答案</summary>
+              <div class="mt-1 text-sm text-slate-600 whitespace-pre-wrap font-mono bg-amber-50 rounded-lg p-3 border border-amber-100">{{ tc.reference_answer }}</div>
+            </details>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Associated runs -->
+  {% if benchmark.runs %}
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm">
+    <div class="px-5 py-4 border-b border-slate-100">
+      <h3 class="font-semibold text-slate-700">关联评测任务</h3>
+    </div>
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-xs text-slate-400 uppercase tracking-wide border-b border-slate-100">
+          <th class="px-5 py-3 text-left font-medium">任务名称</th>
+          <th class="px-5 py-3 text-left font-medium">状态</th>
+          <th class="px-5 py-3 text-left font-medium">时间</th>
+          <th class="px-5 py-3 text-right font-medium">操作</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-50">
+        {% for run in benchmark.runs | sort(attribute='created_at', reverse=True) %}
+        <tr class="hover:bg-slate-50">
+          <td class="px-5 py-3 font-medium text-slate-700">{{ run.name }}</td>
+          <td class="px-5 py-3">
+            {% if run.status == 'completed' %}
+              <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700">已完成</span>
+            {% elif run.status == 'running' %}
+              <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 animate-pulse">运行中</span>
+            {% elif run.status == 'failed' %}
+              <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-700">失败</span>
+            {% else %}
+              <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-500">等待中</span>
+            {% endif %}
+          </td>
+          <td class="px-5 py-3 text-slate-400 text-xs">{{ run.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+          <td class="px-5 py-3 text-right space-x-2">
+            <a href="/runs/{{ run.id }}" class="text-xs text-indigo-600 hover:underline">详情</a>
+            {% if run.status == 'completed' %}
+            <a href="/runs/{{ run.id }}/compare" class="text-xs text-indigo-600 hover:underline">对比</a>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

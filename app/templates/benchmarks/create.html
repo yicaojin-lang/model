@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block title %}新建测试集 · 多模型盲测评估工具{% endblock %}
+{% block page_title %}新建测试集{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto" x-data="benchmarkForm()">
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+
+    <!-- Basic info -->
+    <div class="space-y-4 mb-8">
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">测试集名称 <span class="text-red-500">*</span></label>
+        <input type="text" x-model="name" placeholder="例：代码生成能力测试"
+               class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">描述（可选）</label>
+        <textarea x-model="description" rows="2" placeholder="测试集的用途或背景说明……"
+                  class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent resize-none"></textarea>
+      </div>
+    </div>
+
+    <!-- Test cases -->
+    <div class="mb-6">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="font-semibold text-slate-700">测试用例</h2>
+        <button type="button" @click="addCase()"
+                class="inline-flex items-center gap-1 px-3 py-1.5 text-xs bg-indigo-50 text-indigo-700 rounded-lg hover:bg-indigo-100 transition-colors font-medium">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+          </svg>
+          添加用例
+        </button>
+      </div>
+
+      <div class="space-y-4">
+        <template x-for="(tc, idx) in cases" :key="idx">
+          <div class="border border-slate-200 rounded-xl p-4 bg-slate-50 relative group">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-semibold text-slate-500" x-text="'用例 #' + (idx+1)"></span>
+              <button type="button" @click="removeCase(idx)"
+                      x-show="cases.length > 1"
+                      class="text-xs text-red-400 hover:text-red-600 transition-colors opacity-0 group-hover:opacity-100">
+                × 移除
+              </button>
+            </div>
+            <div class="space-y-2">
+              <div>
+                <label class="text-xs font-medium text-slate-600 mb-0.5 block">Prompt <span class="text-red-500">*</span></label>
+                <textarea x-model="tc.prompt" rows="4" placeholder="输入测试 prompt……"
+                          class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent resize-y bg-white"></textarea>
+              </div>
+              <div>
+                <label class="text-xs font-medium text-slate-600 mb-0.5 block">参考答案（可选）</label>
+                <textarea x-model="tc.reference_answer" rows="2" placeholder="期望输出或评分参考……"
+                          class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent resize-y bg-white"></textarea>
+              </div>
+              <!-- Image upload (for vision/multimodal models) -->
+              <div>
+                <label class="text-xs font-medium text-slate-600 mb-1 block">
+                  附加图片（可选，用于 llava 等视觉模型）
+                </label>
+                <div x-show="!tc.image_preview" class="flex items-center gap-2">
+                  <label class="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 border border-dashed border-slate-300 rounded-lg text-xs text-slate-500 hover:border-indigo-400 hover:text-indigo-600 transition-colors bg-white">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                    </svg>
+                    选择图片
+                    <input type="file" accept="image/*" class="hidden" @change="handleImage(idx, $event)" />
+                  </label>
+                  <span class="text-xs text-slate-400">PNG / JPG / WEBP</span>
+                </div>
+                <div x-show="tc.image_preview" class="flex items-start gap-3">
+                  <img :src="tc.image_preview" class="h-20 w-auto rounded-lg border border-slate-200 object-cover" />
+                  <div>
+                    <div class="text-xs text-slate-500 mb-1" x-text="tc.image_media_type"></div>
+                    <button type="button" @click="clearImage(idx)"
+                            class="text-xs text-red-400 hover:text-red-600 transition-colors">× 移除图片</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <p x-show="cases.length === 0" class="text-sm text-slate-400 text-center py-4">
+        点击「添加用例」开始添加测试 prompt
+      </p>
+    </div>
+
+    <!-- Actions -->
+    <div class="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+      <a href="/benchmarks" class="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 transition-colors">取消</a>
+      <button type="button" @click="submit()"
+              :disabled="saving || !name.trim() || cases.length === 0 || cases.some(c => !c.prompt.trim())"
+              class="px-5 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
+        <svg x-show="saving" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+        </svg>
+        <span x-text="saving ? '保存中…' : '保存测试集'"></span>
+      </button>
+    </div>
+
+    <p x-show="error" x-text="error" class="mt-3 text-sm text-red-600 text-right"></p>
+  </div>
+</div>
+
+<script>
+function benchmarkForm() {
+  return {
+    name: '',
+    description: '',
+    cases: [{ prompt: '', reference_answer: '', image_data: null, image_media_type: null, image_preview: null }],
+    saving: false,
+    error: '',
+
+    addCase() {
+      this.cases.push({ prompt: '', reference_answer: '', image_data: null, image_media_type: null, image_preview: null });
+    },
+
+    handleImage(idx, event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const full = e.target.result; // "data:image/png;base64,ABC..."
+        const [header, data] = full.split(',');
+        const mediaType = header.match(/data:([^;]+)/)[1];
+        this.cases[idx].image_data = data;
+        this.cases[idx].image_media_type = mediaType;
+        this.cases[idx].image_preview = full;
+      };
+      reader.readAsDataURL(file);
+    },
+
+    clearImage(idx) {
+      this.cases[idx].image_data = null;
+      this.cases[idx].image_media_type = null;
+      this.cases[idx].image_preview = null;
+    },
+
+    removeCase(idx) {
+      this.cases.splice(idx, 1);
+    },
+
+    async submit() {
+      this.error = '';
+      if (!this.name.trim() || this.cases.length === 0) return;
+      if (this.cases.some(c => !c.prompt.trim())) {
+        this.error = '所有用例的 Prompt 不能为空';
+        return;
+      }
+
+      this.saving = true;
+      try {
+        const payload = {
+          name: this.name.trim(),
+          description: this.description.trim() || null,
+          test_cases: this.cases.map((c, i) => ({
+            prompt: c.prompt.trim(),
+            reference_answer: c.reference_answer.trim() || null,
+            order_index: i,
+            image_data: c.image_data || null,
+            image_media_type: c.image_media_type || null,
+          })),
+        };
+        const resp = await apiFetch('/api/benchmarks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!resp.ok) {
+          const data = await resp.json();
+          throw new Error(data.detail || '保存失败');
+        }
+        const data = await resp.json();
+        window.location.href = `/benchmarks/${data.id}`;
+      } catch (e) {
+        this.error = e.message;
+      } finally {
+        this.saving = false;
+      }
+    },
+  };
+}
+</script>
+{% endblock %}

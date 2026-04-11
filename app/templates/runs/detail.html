@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+{% block title %}{{ run.name }} · 评测详情{% endblock %}
+{% block page_title %}评测任务详情{% endblock %}
+
+{% block header_actions %}
+  {% if run.status == 'completed' %}
+  <a href="/runs/{{ run.id }}/compare"
+     class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+    </svg>
+    进入盲测对比
+  </a>
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto space-y-5"
+     x-data="runDetail({{ run.id }}, '{{ run.status }}')"
+     x-init="init()">
+
+  <!-- Summary card -->
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+    <div class="flex items-start justify-between">
+      <div>
+        <h2 class="text-xl font-bold text-slate-800">{{ run.name }}</h2>
+        <div class="text-sm text-slate-500 mt-0.5">
+          测试集：<a href="/benchmarks/{{ run.benchmark_id }}" class="text-indigo-600 hover:underline">{{ run.benchmark.name }}</a>
+        </div>
+        <div class="flex flex-wrap items-center gap-2 mt-2">
+          {% for mn in run.model_names %}
+          <span class="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs font-mono">{{ mn }}</span>
+          {% endfor %}
+        </div>
+      </div>
+      <div>
+        {% if run.status == 'completed' %}
+          <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium bg-emerald-50 text-emerald-700">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>已完成
+          </span>
+        {% elif run.status == 'running' %}
+          <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium bg-blue-50 text-blue-700 animate-pulse">
+            <span class="w-2 h-2 rounded-full bg-blue-500 inline-block"></span>运行中…
+          </span>
+        {% elif run.status == 'failed' %}
+          <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium bg-red-50 text-red-700">
+            <span class="w-2 h-2 rounded-full bg-red-500 inline-block"></span>失败
+          </span>
+        {% else %}
+          <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium bg-slate-100 text-slate-500">
+            <span class="w-2 h-2 rounded-full bg-slate-400 inline-block"></span>等待中
+          </span>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Progress bar -->
+    <div class="mt-4" x-show="status === 'running' || status === 'pending'">
+      <div class="flex items-center justify-between text-xs text-slate-500 mb-1">
+        <span>推理进度</span>
+        <span><span x-text="progress.completed"></span> / <span x-text="progress.total"></span></span>
+      </div>
+      <div class="h-2 bg-slate-100 rounded-full overflow-hidden">
+        <div class="h-full bg-blue-400 rounded-full transition-all duration-500"
+             :style="'width:' + (progress.total > 0 ? Math.round(progress.completed/progress.total*100) : 0) + '%'"></div>
+      </div>
+    </div>
+    {% if run.status == 'completed' %}
+    <div class="mt-3 flex items-center gap-4 text-xs text-slate-400">
+      <span>共 {{ total }} 条推理结果</span>
+      {% if run.completed_at %}
+      <span>完成于 {{ run.completed_at.strftime('%Y-%m-%d %H:%M') }}</span>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Responses table (grouped by test case) -->
+  {% if run.responses %}
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm">
+    <div class="px-5 py-4 border-b border-slate-100">
+      <h3 class="font-semibold text-slate-700">推理结果</h3>
+    </div>
+    {% set tc_ids = run.responses | map(attribute='test_case_id') | unique | list %}
+    {% for resp in run.responses | sort(attribute='test_case_id') %}
+    {% if loop.first or resp.test_case_id != run.responses[loop.index0 - 1].test_case_id %}
+    <div class="px-5 py-3 bg-slate-50 border-b border-slate-100">
+      <span class="text-xs font-semibold text-slate-500">
+        用例 #{{ resp.test_case_id }} — {{ resp.test_case.prompt[:80] }}{% if resp.test_case.prompt|length > 80 %}…{% endif %}
+      </span>
+    </div>
+    {% endif %}
+    <div class="px-5 py-3 border-b border-slate-50">
+      <div class="flex items-start gap-3">
+        <span class="flex-shrink-0 px-2 py-0.5 bg-indigo-50 text-indigo-600 text-xs font-mono rounded">{{ resp.model_name }}</span>
+        <div class="flex-1 min-w-0">
+          {% if resp.error %}
+          <p class="text-sm text-red-500">⚠ {{ resp.error }}</p>
+          {% else %}
+          <p class="text-sm text-slate-700 line-clamp-3 whitespace-pre-wrap">{{ resp.response_text }}</p>
+          {% endif %}
+          <div class="flex items-center gap-4 mt-1.5 text-xs text-slate-400">
+            {% if resp.latency_ms %}
+            <span>⏱ {{ "%.0f"|format(resp.latency_ms) }} ms</span>
+            {% endif %}
+            {% if resp.completion_tokens %}
+            <span>📝 {{ resp.completion_tokens }} tokens</span>
+            {% endif %}
+            {% if resp.manual_score %}
+            <span class="text-amber-500">★ {{ resp.manual_score.score }}/5</span>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- Stats (if completed and has scores) -->
+  <div x-show="status === 'completed'" class="bg-white rounded-xl border border-slate-200 shadow-sm" x-cloak>
+    <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+      <h3 class="font-semibold text-slate-700">模型统计</h3>
+      <button @click="loadStats()" class="text-xs text-indigo-600 hover:underline">刷新</button>
+    </div>
+    <template x-if="stats">
+      <div class="divide-y divide-slate-50">
+        <template x-for="(s, i) in stats.model_stats" :key="s.model_name">
+          <div class="px-5 py-4 flex items-center gap-4">
+            <span class="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
+                  :class="i===0 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500'"
+                  x-text="i+1"></span>
+            <div class="flex-1 min-w-0">
+              <div class="font-mono text-sm text-slate-700" x-text="s.model_name"></div>
+            </div>
+            <div class="flex items-center gap-6 text-sm">
+              <div class="text-center">
+                <div class="font-semibold text-amber-600" x-text="s.avg_score ? s.avg_score.toFixed(2) + ' ★' : '—'"></div>
+                <div class="text-xs text-slate-400">平均评分</div>
+              </div>
+              <div class="text-center">
+                <div class="font-semibold text-slate-700" x-text="s.avg_latency_ms ? (s.avg_latency_ms/1000).toFixed(1) + 's' : '—'"></div>
+                <div class="text-xs text-slate-400">平均延迟</div>
+              </div>
+              <div class="text-center">
+                <div class="font-semibold text-slate-700" x-text="s.avg_tokens_per_second ? s.avg_tokens_per_second.toFixed(1) + ' t/s' : '—'"></div>
+                <div class="text-xs text-slate-400">推理速度</div>
+              </div>
+              <div class="text-center">
+                <div class="text-xs text-slate-400" x-text="s.scored_count + '/' + s.response_count + ' 已评分'"></div>
+              </div>
+            </div>
+          </div>
+        </template>
+        <div x-show="!stats.model_stats || stats.model_stats.length === 0" class="px-5 py-4 text-sm text-slate-400">
+          暂无评分数据
+        </div>
+      </div>
+    </template>
+  </div>
+
+</div>
+
+<script>
+function runDetail(runId, initialStatus) {
+  return {
+    status: initialStatus,
+    progress: { completed: {{ completed }}, total: {{ total }} },
+    stats: null,
+    pollTimer: null,
+
+    init() {
+      if (this.status === 'running' || this.status === 'pending') {
+        this.startPolling();
+      }
+      if (this.status === 'completed') {
+        this.loadStats();
+      }
+    },
+
+    startPolling() {
+      this.pollTimer = setInterval(async () => {
+        try {
+          const resp = await apiFetch(`/api/runs/${runId}`);
+          const data = await resp.json();
+          this.status = data.status;
+          this.progress = data.progress;
+          if (this.status === 'completed') {
+            clearInterval(this.pollTimer);
+            await this.loadStats();
+            // Reload page to show all responses
+            setTimeout(() => location.reload(), 1000);
+          } else if (this.status === 'failed') {
+            clearInterval(this.pollTimer);
+            location.reload();
+          }
+        } catch (e) {
+          console.error('Poll error:', e);
+        }
+      }, 2000);
+    },
+
+    async loadStats() {
+      try {
+        const resp = await apiFetch(`/api/runs/${runId}/stats`);
+        this.stats = await resp.json();
+      } catch (e) {
+        console.error('Stats error:', e);
+      }
+    },
+  };
+}
+</script>
+{% endblock %}

@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block title %}控制台 · 多模型盲测评估工具{% endblock %}
+{% block page_title %}控制台{% endblock %}
+
+{% block header_actions %}
+  <a href="/benchmarks/new"
+     class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+    </svg>
+    新建测试集
+  </a>
+  <a href="/runs/new"
+     class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700 transition-colors">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+    </svg>
+    发起评测
+  </a>
+{% endblock %}
+
+{% block content %}
+<!-- Stat cards -->
+<div class="grid grid-cols-3 gap-4 mb-8">
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+    <div class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">测试集</div>
+    <div class="text-4xl font-bold text-slate-800">{{ bench_count }}</div>
+    <a href="/benchmarks" class="text-xs text-indigo-600 hover:underline mt-1 inline-block">查看全部 →</a>
+  </div>
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+    <div class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">评测任务</div>
+    <div class="text-4xl font-bold text-slate-800">{{ run_count }}</div>
+    <a href="/runs" class="text-xs text-indigo-600 hover:underline mt-1 inline-block">查看全部 →</a>
+  </div>
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+    <div class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">已完成</div>
+    <div class="text-4xl font-bold text-emerald-600">{{ completed_count }}</div>
+    {% if run_count > 0 %}
+    <div class="text-xs text-slate-400 mt-1">
+      完成率 {{ "%.0f"|format(completed_count / run_count * 100) }}%
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Recent runs -->
+<div class="bg-white rounded-xl border border-slate-200 shadow-sm">
+  <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+    <h2 class="font-semibold text-slate-700">最近评测任务</h2>
+    <a href="/runs/new" class="text-xs text-indigo-600 hover:underline">+ 新建</a>
+  </div>
+  {% if recent_runs %}
+  <table class="w-full text-sm">
+    <thead>
+      <tr class="text-xs text-slate-400 uppercase tracking-wide border-b border-slate-100">
+        <th class="px-5 py-3 text-left font-medium">任务名称</th>
+        <th class="px-5 py-3 text-left font-medium">测试集</th>
+        <th class="px-5 py-3 text-left font-medium">状态</th>
+        <th class="px-5 py-3 text-left font-medium">创建时间</th>
+        <th class="px-5 py-3 text-left font-medium"></th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-slate-50">
+      {% for run in recent_runs %}
+      <tr class="hover:bg-slate-50 transition-colors">
+        <td class="px-5 py-3 font-medium text-slate-700">{{ run.name }}</td>
+        <td class="px-5 py-3 text-slate-500">{{ run.benchmark.name }}</td>
+        <td class="px-5 py-3">
+          {% if run.status == 'completed' %}
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block"></span>已完成
+            </span>
+          {% elif run.status == 'running' %}
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 animate-pulse">
+              <span class="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block"></span>运行中
+            </span>
+          {% elif run.status == 'failed' %}
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-700">
+              <span class="w-1.5 h-1.5 rounded-full bg-red-500 inline-block"></span>失败
+            </span>
+          {% else %}
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-500">
+              <span class="w-1.5 h-1.5 rounded-full bg-slate-400 inline-block"></span>等待中
+            </span>
+          {% endif %}
+        </td>
+        <td class="px-5 py-3 text-slate-400 text-xs">{{ run.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td class="px-5 py-3">
+          <a href="/runs/{{ run.id }}" class="text-xs text-indigo-600 hover:underline">详情</a>
+          {% if run.status == 'completed' %}
+          <span class="text-slate-300 mx-1">·</span>
+          <a href="/runs/{{ run.id }}/compare" class="text-xs text-indigo-600 hover:underline">对比</a>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="px-5 py-12 text-center text-slate-400">
+    <div class="text-4xl mb-3">🚀</div>
+    <div class="font-medium">尚无评测任务</div>
+    <div class="text-sm mt-1">先创建一个测试集，再发起评测</div>
+    <a href="/benchmarks/new" class="inline-block mt-4 px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700">
+      创建测试集
+    </a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
