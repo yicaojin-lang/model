@@ -42,7 +42,7 @@ class OllamaClient:
 
     async def list_models(self) -> List[str]:
         """Return names of all locally available Ollama models."""
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=10.0, proxy=None) as client:
             resp = await client.get(f"{self.base_url}/api/tags")
             resp.raise_for_status()
             data = resp.json()
@@ -68,7 +68,7 @@ class OllamaClient:
         Timeout is set generously (10 min) for slow/large models.
         """
         start = time.perf_counter()
-        async with httpx.AsyncClient(timeout=600.0) as client:
+        async with httpx.AsyncClient(timeout=600.0, proxy=None) as client:
             payload: dict = {
                 "model": model,
                 "prompt": prompt,
