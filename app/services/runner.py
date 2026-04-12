@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.database import AsyncSessionLocal
-from app.models.orm import EvaluationRun, ModelResponse
+from app.models.orm import Benchmark, EvaluationRun, ModelResponse
 from app.services.ollama import ollama_client
 
 logger = logging.getLogger(__name__)
@@ -34,7 +34,7 @@ async def execute_run(run_id: int) -> None:
             .where(EvaluationRun.id == run_id)
             .options(
                 selectinload(EvaluationRun.benchmark).selectinload(
-                    "test_cases"
+                    Benchmark.test_cases
                 )
             )
         )
