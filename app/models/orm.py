@@ -74,6 +74,9 @@ class EvaluationRun(Base):
     status: Mapped[str] = mapped_column(
         String(50), default="pending", nullable=False
     )
+    context_mode: Mapped[str] = mapped_column(
+        String(50), default="full_history", nullable=False
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), nullable=False
     )
@@ -109,6 +112,9 @@ class ModelResponse(Base):
         ForeignKey("test_cases.id"), nullable=False
     )
     model_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    context_mode: Mapped[str] = mapped_column(
+        String(50), default="full_history", nullable=False
+    )
     response_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     latency_ms: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     prompt_tokens: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)

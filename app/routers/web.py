@@ -178,9 +178,18 @@ async def run_detail(
 
     total = len(run.model_names) * len(run.benchmark.test_cases)
     completed = len(run.responses)
+    response_case_ids = {resp.test_case_id for resp in run.responses}
+    all_case_ids = {tc.id for tc in run.benchmark.test_cases}
+    has_new_test_cases = not all_case_ids.issubset(response_case_ids)
     return templates.TemplateResponse(
         "runs/detail.html",
-        _ctx(request, run=run, total=total, completed=completed),
+        _ctx(
+            request,
+            run=run,
+            total=total,
+            completed=completed,
+            has_new_test_cases=has_new_test_cases,
+        ),
     )
 
 

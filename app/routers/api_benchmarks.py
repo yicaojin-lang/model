@@ -1,14 +1,20 @@
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.dependencies import verify_api_key
 from app.models.orm import Benchmark, TestCase
-from app.schemas.api import BenchmarkCreate, BenchmarkDetailOut, BenchmarkOut
+from app.schemas.api import (
+    BenchmarkCreate,
+    BenchmarkDetailOut,
+    BenchmarkOut,
+    TestCaseCreate,
+    TestCaseOut,
+)
 
 router = APIRouter(
     prefix="/api/benchmarks",
@@ -104,6 +110,42 @@ async def get_benchmark(
     if b is None:
         raise HTTPException(status_code=404, detail="Benchmark not found")
     return _to_detail_out(b)
+
+
+@router.post(
+    "/{benchmark_id}/test_cases",
+    response_model=TestCaseOut,
+    summary="Append a new test case to a benchmark",
+)
+async def append_test_case(
+    benchmark_id: int,
+    payload: TestCaseCreate,
+    db: AsyncSession = Depends(get_db),
+) -> TestCaseOut:
+    benchmark = await db.get(Benchmark, benchmark_id)
+    if benchmark is None:
+        raise HTTPException(status_code=404, detail="Benchmark not found")
+
+    result = await db.execute(
+        select(func.max(TestCase.order_index)).where(TestCase.benchmark_id == benchmark_id)
+    )
+    max_index = result.scalar_one()
+    order_index = payload.order_index
+    if order_index == 0 and max_index is not None:
+        order_index = max_index + 1
+
+    test_case = TestCase(
+        benchmark_id=benchmark_id,
+        prompt=payload.prompt,
+        reference_answer=payload.reference_answer,
+        order_index=order_index,
+        image_data=payload.image_data,
+        image_media_type=payload.image_media_type,
+    )
+    db.add(test_case)
+    await db.commit()
+    await db.refresh(test_case)
+    return test_case
 
 
 @router.delete(

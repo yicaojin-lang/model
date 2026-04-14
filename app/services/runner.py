@@ -16,13 +16,22 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.database import AsyncSessionLocal
-from app.models.orm import Benchmark, EvaluationRun, ModelResponse
+from app.models.orm import Benchmark, EvaluationRun, ModelResponse, TestCase
 from app.services.ollama import ollama_client
 
 logger = logging.getLogger(__name__)
 
 
-async def execute_run(run_id: int) -> None:
+def build_full_history_prompt(current_tc: TestCase, previous_responses: list[ModelResponse]) -> str:
+    lines = []
+    for idx, response in enumerate(previous_responses, start=1):
+        lines.append(f"Q{idx}: {response.test_case.prompt}")
+        lines.append(f"A{idx}: {response.response_text or ''}")
+    lines.append(f"Q{len(previous_responses) + 1}: {current_tc.prompt}")
+    return "\n".join(lines)
+
+
+async def execute_run(run_id: int, context_mode: str = "full_history") -> None:
     """
     Background coroutine: drives the full lifecycle of one evaluation run.
     Uses its own database session (independent of the HTTP request session).
@@ -60,20 +69,63 @@ async def execute_run(run_id: int) -> None:
         )
 
         try:
+            # Query existing responses only for this run
+            existing_responses_result = await db.execute(
+                select(ModelResponse)
+                .where(ModelResponse.run_id == run_id)
+                .options(selectinload(ModelResponse.test_case))
+            )
+            existing_responses = existing_responses_result.scalars().all()
+            existing_response_map = {
+                (resp.model_name, resp.test_case_id): resp
+                for resp in existing_responses
+            }
+
             for model_name in model_names:
-                for tc in test_cases:
+                for idx, tc in enumerate(test_cases):
+                    # Skip if response already exists
+                    if (model_name, tc.id) in existing_response_map:
+                        logger.info(
+                            "Run #%d | model=%s | tc#%d | skipped (already exists)",
+                            run_id, model_name, tc.id
+                        )
+                        continue
+
                     logger.info(
                         "Run #%d | model=%s | tc#%d", run_id, model_name, tc.id
                     )
+
+                    previous_responses = []
+                    if context_mode == "full_history" and idx > 0:
+                        previous_ids = [tc_prior.id for tc_prior in test_cases[:idx]]
+                        # Use existing responses from this run as history context
+                        previous_responses = [
+                            existing_response_map.get((model_name, tc_id))
+                            for tc_id in previous_ids
+                            if (model_name, tc_id) in existing_response_map
+                        ]
+                        previous_responses = [r for r in previous_responses if r]  # Filter None
+                        previous_responses.sort(
+                            key=lambda r: next(
+                                (i for i, tc_prior in enumerate(test_cases) if tc_prior.id == r.test_case_id),
+                                0,
+                            ),
+                        )
+
+                    prompt = tc.prompt
+                    if context_mode == "full_history" and previous_responses:
+                        prompt = build_full_history_prompt(tc, previous_responses)
+
                     images = [tc.image_data] if tc.image_data else None
                     result_obj = await ollama_client.generate(
-                        model_name, tc.prompt, images=images
+                        model_name, prompt, images=images
                     )
 
                     response = ModelResponse(
                         run_id=run_id,
                         test_case_id=tc.id,
                         model_name=model_name,
+                        context_mode=context_mode,
                         response_text=result_obj.response_text or None,
                         latency_ms=result_obj.latency_ms,
                         prompt_tokens=result_obj.prompt_tokens,

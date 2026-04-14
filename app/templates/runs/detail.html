@@ -3,6 +3,14 @@
 {% block page_title %}评测任务详情{% endblock %}
 
 {% block header_actions %}
+  {% if run.status == 'completed' and has_new_test_cases %}
+  <button
+     type="button"
+     onclick="continueRun({{ run.id }})"
+     class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700 transition-colors">
+    继续新增问题评测
+  </button>
+  {% endif %}
   {% if run.status == 'completed' %}
   <a href="/runs/{{ run.id }}/compare"
      class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors">
@@ -17,7 +25,7 @@
 
 {% block content %}
 <div class="max-w-5xl mx-auto space-y-5"
-     x-data="runDetail({{ run.id }}, '{{ run.status }}')"
+     x-data="runDetail({{ run.id }}, '{{ run.status }}', {{ run.benchmark_id }})"
      x-init="init()">
 
   <!-- Summary card -->
@@ -76,20 +84,94 @@
     {% endif %}
   </div>
 
-  <!-- Responses table (grouped by test case) -->
+  <!-- Dialogue chain section -->
   {% if run.responses %}
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm">
+    <div class="px-5 py-4 border-b border-slate-100">
+      <h3 class="font-semibold text-slate-700">完整对话链</h3>
+      <p class="text-xs text-slate-500 mt-1">基于同一模型的历史回答展示完整对话顺序。</p>
+    </div>
+    <div class="p-5 space-y-4">
+      {% for mn in run.model_names %}
+      <div class="rounded-2xl border border-slate-100 p-4 bg-slate-50">
+        <div class="text-sm font-semibold text-slate-700 mb-3">模型：{{ mn }}</div>
+        {% set model_responses = run.responses | selectattr('model_name', 'equalto', mn) | sort(attribute='test_case.order_index') | list %}
+        {% set last_resp = model_responses[-1] if model_responses else None %}
+        {% for resp in model_responses %}
+            <div class="mb-3">
+              <div class="text-xs text-slate-500">Q{{ loop.index }}: {{ resp.test_case.prompt }}</div>
+              <div class="mt-1 text-sm text-slate-700 whitespace-pre-wrap">A{{ loop.index }}: {{ resp.response_text or '（无回答）' }}</div>
+            </div>
+        {% endfor %}
+        {% if last_resp %}
+        <div class="mt-4">
+          <button type="button"
+                  class="inline-flex items-center gap-2 px-3 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors"
+                  @click="openManualQuestion()">
+            创建下一个问题
+          </button>
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div x-show="manualQuestion.active" class="bg-white rounded-xl border border-slate-200 shadow-sm" x-cloak>
+    <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+      <div>
+        <h3 class="font-semibold text-slate-700">创建下一个问题</h3>
+        <p class="text-xs text-slate-500 mt-1">手动输入后续问题，提交后会加入当前测试集并继续评测。</p>
+      </div>
+    </div>
+    <div class="p-5 space-y-4">
+      <div class="space-y-2">
+        <div class="text-xs text-slate-500">问题内容</div>
+        <textarea rows="3"
+                  x-model="manualQuestion.prompt"
+                  class="w-full rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-800"
+                  placeholder="请输入要让模型回答的下一问题"></textarea>
+      </div>
+      <div class="space-y-2">
+        <div class="text-xs text-slate-500">参考答案（可选）</div>
+        <textarea rows="2"
+                  x-model="manualQuestion.referenceAnswer"
+                  class="w-full rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-800"
+                  placeholder="可选：输入你希望的参考答案或说明"></textarea>
+      </div>
+      <div class="flex items-center gap-3">
+        <button type="button"
+                class="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700 transition-colors"
+                :class="{ 'opacity-50 cursor-not-allowed': manualQuestion.submitting }"
+                :disabled="manualQuestion.submitting"
+                @click="submitManualQuestion()">
+          提交到测试集并继续评测
+        </button>
+        <button type="button"
+                class="inline-flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 text-sm rounded-lg hover:bg-slate-200 transition-colors"
+                @click="cancelManualQuestion()">
+          取消
+        </button>
+      </div>
+      <div x-show="manualQuestion.error" class="text-sm text-red-500" x-text="manualQuestion.error"></div>
+      <div x-show="manualQuestion.success" class="text-sm text-emerald-600" x-text="manualQuestion.success"></div>
+    </div>
+  </div>
+
+  <!-- Responses table (grouped by test case) -->
   <div class="bg-white rounded-xl border border-slate-200 shadow-sm">
     <div class="px-5 py-4 border-b border-slate-100">
       <h3 class="font-semibold text-slate-700">推理结果</h3>
     </div>
-    {% set tc_ids = run.responses | map(attribute='test_case_id') | unique | list %}
-    {% for resp in run.responses | sort(attribute='test_case_id') %}
-    {% if loop.first or resp.test_case_id != run.responses[loop.index0 - 1].test_case_id %}
+    {% set prev_tc_id = None %}
+    {% for resp in run.responses | sort(attribute='model_name') | sort(attribute='test_case_id') %}
+    {% if loop.first or resp.test_case_id != prev_tc_id %}
     <div class="px-5 py-3 bg-slate-50 border-b border-slate-100">
       <span class="text-xs font-semibold text-slate-500">
         用例 #{{ resp.test_case_id }} — {{ resp.test_case.prompt[:80] }}{% if resp.test_case.prompt|length > 80 %}…{% endif %}
       </span>
     </div>
+    {% set prev_tc_id = resp.test_case_id %}
     {% endif %}
     <div class="px-5 py-3 border-b border-slate-50">
       <div class="flex items-start gap-3">
@@ -163,12 +245,21 @@
 </div>
 
 <script>
-function runDetail(runId, initialStatus) {
+function runDetail(runId, initialStatus, benchmarkId) {
   return {
     status: initialStatus,
     progress: { completed: {{ completed }}, total: {{ total }} },
     stats: null,
     pollTimer: null,
+    benchmarkId,
+    manualQuestion: {
+      active: false,
+      prompt: '',
+      referenceAnswer: '',
+      submitting: false,
+      error: '',
+      success: '',
+    },
 
     init() {
       if (this.status === 'running' || this.status === 'pending') {
@@ -209,7 +300,72 @@ function runDetail(runId, initialStatus) {
         console.error('Stats error:', e);
       }
     },
+
+    openManualQuestion() {
+      this.manualQuestion.active = true;
+      this.manualQuestion.prompt = '';
+      this.manualQuestion.referenceAnswer = '';
+      this.manualQuestion.error = '';
+      this.manualQuestion.success = '';
+      this.manualQuestion.submitting = false;
+    },
+
+    async submitManualQuestion() {
+      if (!this.manualQuestion.prompt.trim()) {
+        this.manualQuestion.error = '请先输入问题内容。';
+        return;
+      }
+      this.manualQuestion.error = '';
+      this.manualQuestion.success = '';
+      this.manualQuestion.submitting = true;
+
+      try {
+        const resp = await apiFetch(`/api/runs/${runId}/manual_question`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt: this.manualQuestion.prompt,
+            reference_answer: this.manualQuestion.referenceAnswer || null,
+          }),
+        });
+        if (!resp.ok) {
+          const error = await resp.text();
+          throw new Error(error || '提交失败');
+        }
+        this.manualQuestion.success = '已创建问题并继续评测，页面将刷新。';
+        setTimeout(() => location.reload(), 800);
+      } catch (e) {
+        this.manualQuestion.error = e.message || '提交失败，请重试。';
+      } finally {
+        this.manualQuestion.submitting = false;
+      }
+    },
+
+    cancelManualQuestion() {
+      this.manualQuestion.active = false;
+      this.manualQuestion.prompt = '';
+      this.manualQuestion.referenceAnswer = '';
+      this.manualQuestion.error = '';
+      this.manualQuestion.success = '';
+      this.manualQuestion.submitting = false;
+    },
   };
+}
+
+async function continueRun(runId) {
+  try {
+    const resp = await apiFetch(`/api/runs/${runId}/continue`, {
+      method: 'POST',
+    });
+    if (!resp.ok) {
+      const text = await resp.text();
+      throw new Error(text || '续跑失败');
+    }
+    location.reload();
+  } catch (e) {
+    console.error('Continue run failed:', e);
+    alert('续跑失败：' + (e.message || '请检查后台日志'));
+  }
 }
 </script>
 {% endblock %}

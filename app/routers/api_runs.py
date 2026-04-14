@@ -2,14 +2,25 @@ import asyncio
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.dependencies import verify_api_key
-from app.models.orm import Benchmark, EvaluationRun, ModelResponse
-from app.schemas.api import ModelResponseOut, ModelStats, RunCreate, RunOut, RunProgress, RunStats
+from app.models.orm import Benchmark, EvaluationRun, ModelResponse, TestCase
+from app.schemas.api import (
+    FollowupCreate,
+    FollowupSuggestionOut,
+    ManualQuestionCreate,
+    ModelResponseOut,
+    ModelStats,
+    RunCreate,
+    RunOut,
+    RunProgress,
+    RunStats,
+    TestCaseOut,
+)
 from app.services.runner import execute_run
 
 router = APIRouter(
@@ -76,18 +87,20 @@ async def create_run(
     if not payload.model_names:
         raise HTTPException(status_code=400, detail="No models selected")
 
+    context_mode = getattr(payload, "context_mode", "full_history") or "full_history"
     run = EvaluationRun(
         benchmark_id=payload.benchmark_id,
         name=payload.name,
         status="pending",
+        context_mode=context_mode,
     )
     run.model_names = payload.model_names
     db.add(run)
     await db.commit()
     await db.refresh(run)
 
-    # Fire-and-forget background task using asyncio — has its own DB session
-    asyncio.create_task(execute_run(run.id))
+    # Fire-and-forget background task using asyncio — has its own DB session.
+    asyncio.create_task(execute_run(run.id, context_mode))
 
     total = len(payload.model_names) * len(benchmark.test_cases)
     return _build_run_out(run, total, 0)
@@ -111,6 +124,141 @@ async def get_run(
         raise HTTPException(status_code=404, detail="Run not found")
     total = len(run.model_names) * len(run.benchmark.test_cases)
     return _build_run_out(run, total, len(run.responses))
+
+
+@router.post(
+    "/{run_id}/continue",
+    response_model=RunOut,
+    summary="Continue a completed run after new test cases were added",
+)
+async def continue_run(
+    run_id: int,
+    db: AsyncSession = Depends(get_db),
+) -> RunOut:
+    run = await db.execute(
+        select(EvaluationRun)
+        .where(EvaluationRun.id == run_id)
+        .options(
+            selectinload(EvaluationRun.benchmark).selectinload(Benchmark.test_cases),
+            selectinload(EvaluationRun.responses),
+        )
+    )
+    run_obj = run.scalar_one_or_none()
+    if run_obj is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    existing_case_ids = {resp.test_case_id for resp in run_obj.responses}
+    new_case_ids = {tc.id for tc in run_obj.benchmark.test_cases}
+    if new_case_ids.issubset(existing_case_ids):
+        raise HTTPException(status_code=400, detail="No new test cases to continue")
+
+    if run_obj.status == "running":
+        raise HTTPException(status_code=400, detail="Run is already running")
+
+    run_obj.status = "pending"
+    await db.commit()
+    asyncio.create_task(execute_run(run_obj.id, run_obj.context_mode))
+
+    total = len(run_obj.model_names) * len(run_obj.benchmark.test_cases)
+    return _build_run_out(run_obj, total, len(run_obj.responses))
+
+
+@router.post(
+    "/{run_id}/manual_question",
+    response_model=TestCaseOut,
+    summary="Create a new question for a run and continue the run",
+)
+async def create_manual_question(
+    run_id: int,
+    payload: ManualQuestionCreate,
+    db: AsyncSession = Depends(get_db),
+) -> TestCaseOut:
+    run_result = await db.execute(
+        select(EvaluationRun)
+        .where(EvaluationRun.id == run_id)
+        .options(selectinload(EvaluationRun.benchmark).selectinload(Benchmark.test_cases))
+    )
+    run_obj = run_result.scalar_one_or_none()
+    if run_obj is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    benchmark = run_obj.benchmark
+    if benchmark is None:
+        raise HTTPException(status_code=404, detail="Benchmark not found")
+
+    result = await db.execute(
+        select(func.max(TestCase.order_index)).where(TestCase.benchmark_id == benchmark.id)
+    )
+    max_index = result.scalar_one()
+    order_index = (max_index + 1) if max_index is not None else 0
+
+    test_case = TestCase(
+        benchmark_id=benchmark.id,
+        prompt=payload.prompt,
+        reference_answer=payload.reference_answer,
+        order_index=order_index,
+    )
+    db.add(test_case)
+    await db.commit()
+    await db.refresh(test_case)
+
+    if run_obj.status == "running":
+        raise HTTPException(status_code=400, detail="Run is already running")
+    run_obj.status = "pending"
+    await db.commit()
+    asyncio.create_task(execute_run(run_obj.id, run_obj.context_mode))
+
+    return test_case
+
+
+@router.post(
+    "/{run_id}/followup",
+    response_model=FollowupSuggestionOut,
+    summary="Generate a suggested follow-up question based on a previous response",
+)
+async def generate_followup_question(
+    run_id: int,
+    payload: FollowupCreate,
+    db: AsyncSession = Depends(get_db),
+) -> FollowupSuggestionOut:
+    run = await db.get(EvaluationRun, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    response_result = await db.execute(
+        select(ModelResponse)
+        .where(ModelResponse.id == payload.response_id)
+        .options(selectinload(ModelResponse.test_case))
+    )
+    response = response_result.scalar_one_or_none()
+    if response is None or response.run_id != run_id:
+        raise HTTPException(status_code=404, detail="Response not found for this run")
+
+    if not response.response_text:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot generate follow-up from an empty response",
+        )
+
+    model_name = run.model_names[0] if run.model_names else "gemma:2b"
+    prompt = (
+        "你是一个对话助手。请根据下面上一轮问答生成一个自然的后续问题。\n"
+        f"上一轮问题：{response.test_case.prompt}\n"
+        f"上一轮回答：{response.response_text}\n"
+        "请直接输出一个简短且相关的后续问题，不要带前缀。"
+    )
+    result = await ollama_client.generate(model_name, prompt)
+    if result.error:
+        raise HTTPException(status_code=500, detail=result.error)
+
+    suggested = result.response_text.strip()
+    if not suggested:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to generate a follow-up question",
+        )
+
+    return FollowupSuggestionOut(suggested_question=suggested)
 
 
 @router.get(

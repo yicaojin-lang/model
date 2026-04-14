@@ -62,6 +62,7 @@ class RunCreate(BaseModel):
     benchmark_id: int
     name: str = Field(..., min_length=1, max_length=255)
     model_names: List[str] = Field(..., min_length=1)
+    context_mode: Optional[str] = Field(default="full_history")
 
 
 class RunProgress(BaseModel):
@@ -80,6 +81,19 @@ class RunOut(BaseModel):
     created_at: datetime
     completed_at: Optional[datetime]
     progress: Optional[RunProgress] = None
+
+
+class ManualQuestionCreate(BaseModel):
+    prompt: str = Field(..., min_length=1)
+    reference_answer: Optional[str] = None
+
+
+class FollowupCreate(BaseModel):
+    response_id: int
+
+
+class FollowupSuggestionOut(BaseModel):
+    suggested_question: str
 
 
 # ─── Model Response ───────────────────────────────────────────────────────────
