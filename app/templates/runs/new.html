@@ -74,6 +74,29 @@
       </svg>
       <span>模型将按顺序逐个推理（<code class="font-mono">keep_alive=0</code>），确保统一内存每次只加载一个模型，防止内存溢出。</span>
     </div>
+git push origin main
+    <!-- Context mode -->
+    <div>
+      <label class="block text-sm font-medium text-slate-700 mb-1">上下文模式</label>
+      <div class="space-y-3">
+        <label class="flex items-start gap-3 p-3 border rounded-lg cursor-pointer transition-colors"
+               :class="contextMode === 'full_history' ? 'border-indigo-400 bg-indigo-50' : 'border-slate-200 hover:border-slate-300'">
+          <input type="radio" x-model="contextMode" value="full_history" class="mt-1 accent-indigo-600" />
+          <div class="flex-1 min-w-0">
+            <div class="font-medium text-sm text-slate-700">完整对话链</div>
+            <div class="text-xs text-slate-500 mt-0.5">第二个问题会基于第一个问题的回答继续问。</div>
+          </div>
+        </label>
+        <label class="flex items-start gap-3 p-3 border rounded-lg cursor-pointer transition-colors"
+               :class="contextMode === 'none' ? 'border-indigo-400 bg-indigo-50' : 'border-slate-200 hover:border-slate-300'">
+          <input type="radio" x-model="contextMode" value="none" class="mt-1 accent-indigo-600" />
+          <div class="flex-1 min-w-0">
+            <div class="font-medium text-sm text-slate-700">独立问题</div>
+            <div class="text-xs text-slate-500 mt-0.5">每个问题单独评测，不使用前一个回答。</div>
+          </div>
+        </label>
+      </div>
+    </div>
 
     <!-- Actions -->
     <div class="flex items-center justify-end gap-3 pt-2 border-t border-slate-100">
@@ -100,6 +123,7 @@ function newRunForm() {
     name: '',
     benchmarkId: params.get('benchmark_id') ? parseInt(params.get('benchmark_id')) : null,
     selectedModels: [],
+    contextMode: 'full_history',
     saving: false,
     error: '',
 
@@ -116,6 +140,7 @@ function newRunForm() {
             name: this.name.trim(),
             benchmark_id: this.benchmarkId,
             model_names: this.selectedModels,
+            context_mode: this.contextMode,
           }),
         });
         if (!resp.ok) {
