@@ -22,11 +22,23 @@ from app.services.ollama import ollama_client
 logger = logging.getLogger(__name__)
 
 
-def build_full_history_prompt(current_tc: TestCase, previous_responses: list[ModelResponse]) -> str:
+def build_full_history_prompt(current_tc: TestCase, previous_responses: list[ModelResponse], max_turns: int = 3) -> str:
     lines = []
-    for idx, response in enumerate(previous_responses, start=1):
+    
+    # 核心逻辑：只截取最近的 max_turns 轮对话
+    recent_responses = previous_responses[-max_turns:] if len(previous_responses) > max_turns else previous_responses
+    
+    # 如果有被截断的历史，可以加一句系统提示（可选）
+    if len(previous_responses) > max_turns:
+        lines.append("[系统提示：为节省内存，已省略部分早期历史对话...]")
+
+    # 重新计算显示的序号（为了排版好看，可以继续用真实的轮次索引）
+    start_idx = len(previous_responses) - len(recent_responses) + 1
+    
+    for idx, response in enumerate(recent_responses, start=start_idx):
         lines.append(f"Q{idx}: {response.test_case.prompt}")
         lines.append(f"A{idx}: {response.response_text or ''}")
+        
     lines.append(f"Q{len(previous_responses) + 1}: {current_tc.prompt}")
     return "\n".join(lines)
 

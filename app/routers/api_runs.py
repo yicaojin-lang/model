@@ -21,6 +21,7 @@ from app.schemas.api import (
     RunStats,
     TestCaseOut,
 )
+from app.services.ollama import ollama_client
 from app.services.runner import execute_run
 
 router = APIRouter(

@@ -13,6 +13,10 @@ class Settings:
     # This is mandatory on unified-memory hardware (Mac Mini) to prevent OOM.
     keep_alive: int = 0
 
+    
+    #ollama timeout, default 600s
+    ollama_timeout: int = 1500
+
     # API key for the RESTful API (used by external projects / LAN protection).
     # Change this to any secret string. Set to "" to disable auth entirely.
     api_key: str = "local-modelTool-key"

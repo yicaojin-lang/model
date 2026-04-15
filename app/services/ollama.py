@@ -76,6 +76,9 @@ class OllamaClient:
                 "prompt": prompt,
                 "stream": False,
                 "keep_alive": self.keep_alive,
+                "options": {
+                    "num_ctx": 4096  # 限制模型最多只能使用 4096 个 Token 的上下文窗口
+                }
             }
             if images:
                 payload["images"] = images
