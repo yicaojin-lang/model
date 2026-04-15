@@ -35,14 +35,16 @@ class OllamaClient:
         self,
         base_url: str = settings.ollama_base_url,
         keep_alive: int = settings.keep_alive,
+        timeout: float = settings.ollama_timeout,
     ) -> None:
         self.base_url = base_url
         # keep_alive=0 ensures the model is evicted from VRAM after each call.
         self.keep_alive = keep_alive
+        self.timeout = timeout
 
     async def list_models(self) -> List[str]:
         """Return names of all locally available Ollama models."""
-        async with httpx.AsyncClient(timeout=10.0, proxy=None) as client:
+        async with httpx.AsyncClient(timeout=self.timeout, proxy=None) as client:
             resp = await client.get(f"{self.base_url}/api/tags")
             resp.raise_for_status()
             data = resp.json()
@@ -68,7 +70,7 @@ class OllamaClient:
         Timeout is set generously (10 min) for slow/large models.
         """
         start = time.perf_counter()
-        async with httpx.AsyncClient(timeout=600.0, proxy=None) as client:
+        async with httpx.AsyncClient(timeout=self.timeout, proxy=None) as client:
             payload: dict = {
                 "model": model,
                 "prompt": prompt,

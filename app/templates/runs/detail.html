@@ -104,16 +104,56 @@
             </div>
         {% endfor %}
         {% if last_resp %}
-        <div class="mt-4">
+        <div class="mt-4 flex flex-wrap items-center gap-3">
           <button type="button"
                   class="inline-flex items-center gap-2 px-3 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors"
                   @click="openManualQuestion()">
-            创建下一个问题
+            手动创建下一个问题
+          </button>
+          <button type="button"
+                  class="inline-flex items-center gap-2 px-3 py-2 bg-slate-100 text-slate-700 text-sm rounded-lg hover:bg-slate-200 transition-colors"
+                  @click="prepareFollowup({{ last_resp.id }}, '{{ mn | replace("'", "\\'") }}')">
+            生成下一个问题
           </button>
         </div>
         {% endif %}
       </div>
       {% endfor %}
+    </div>
+  </div>
+
+  <div x-show="followup.active" class="bg-white rounded-xl border border-slate-200 shadow-sm" x-cloak>
+    <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+      <div>
+        <h3 class="font-semibold text-slate-700">生成下一个问题</h3>
+        <p class="text-xs text-slate-500 mt-1">自动生成一个基于前一个回答的后续问题，确认后加入当前测试集。</p>
+      </div>
+      <div class="text-xs text-slate-500">模型：<span x-text="followup.modelName"></span></div>
+    </div>
+    <div class="p-5 space-y-4">
+      <div class="space-y-2">
+        <div class="text-xs text-slate-500">建议问题</div>
+        <textarea rows="3"
+                  x-model="followup.suggestedQuestion"
+                  class="w-full rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-800"
+                  placeholder="生成的后续问题会显示在这里"></textarea>
+      </div>
+      <div class="flex items-center gap-3">
+        <button type="button"
+                class="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700 transition-colors"
+                :class="{ 'opacity-50 cursor-not-allowed': followup.submitting }"
+                :disabled="followup.submitting"
+                @click="submitFollowup()">
+          提交到测试集并继续评测
+        </button>
+        <button type="button"
+                class="inline-flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 text-sm rounded-lg hover:bg-slate-200 transition-colors"
+                @click="cancelFollowup()">
+          取消
+        </button>
+      </div>
+      <div x-show="followup.error" class="text-sm text-red-500" x-text="followup.error"></div>
+      <div x-show="followup.success" class="text-sm text-emerald-600" x-text="followup.success"></div>
     </div>
   </div>
 
@@ -252,6 +292,15 @@ function runDetail(runId, initialStatus, benchmarkId) {
     stats: null,
     pollTimer: null,
     benchmarkId,
+    followup: {
+      active: false,
+      responseId: null,
+      modelName: null,
+      suggestedQuestion: '',
+      submitting: false,
+      error: '',
+      success: '',
+    },
     manualQuestion: {
       active: false,
       prompt: '',
@@ -301,6 +350,83 @@ function runDetail(runId, initialStatus, benchmarkId) {
       }
     },
 
+    prepareFollowup(responseId, modelName) {
+      this.followup.active = true;
+      this.followup.responseId = responseId;
+      this.followup.modelName = modelName;
+      this.followup.suggestedQuestion = '';
+      this.followup.error = '';
+      this.followup.success = '';
+      this.followup.submitting = true;
+
+      this.manualQuestion.active = false;
+      this.manualQuestion.error = '';
+      this.manualQuestion.success = '';
+
+      this.generateFollowup();
+    },
+
+    async generateFollowup() {
+      try {
+        const resp = await apiFetch(`/api/runs/${runId}/followup`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ response_id: this.followup.responseId }),
+        });
+        if (!resp.ok) {
+          const error = await resp.text();
+          throw new Error(error || '生成后续问题失败');
+        }
+        const data = await resp.json();
+        this.followup.suggestedQuestion = data.suggested_question;
+      } catch (e) {
+        this.followup.error = e.message || '生成后续问题失败';
+      } finally {
+        this.followup.submitting = false;
+      }
+    },
+
+    async submitFollowup() {
+      if (!this.followup.suggestedQuestion.trim()) {
+        this.followup.error = '请先生成或填写后续问题内容。';
+        return;
+      }
+      this.followup.error = '';
+      this.followup.success = '';
+      this.followup.submitting = true;
+
+      try {
+        const resp = await apiFetch(`/api/runs/${runId}/manual_question`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt: this.followup.suggestedQuestion,
+            reference_answer: null,
+          }),
+        });
+        if (!resp.ok) {
+          const error = await resp.text();
+          throw new Error(error || '提交测试用例失败');
+        }
+        this.followup.success = '已成功创建后续问题并加入测试集，页面将刷新。';
+        setTimeout(() => location.reload(), 800);
+      } catch (e) {
+        this.followup.error = e.message || '提交测试用例失败';
+      } finally {
+        this.followup.submitting = false;
+      }
+    },
+
+    cancelFollowup() {
+      this.followup.active = false;
+      this.followup.responseId = null;
+      this.followup.modelName = null;
+      this.followup.suggestedQuestion = '';
+      this.followup.error = '';
+      this.followup.success = '';
+      this.followup.submitting = false;
+    },
+
     openManualQuestion() {
       this.manualQuestion.active = true;
       this.manualQuestion.prompt = '';
@@ -308,6 +434,9 @@ function runDetail(runId, initialStatus, benchmarkId) {
       this.manualQuestion.error = '';
       this.manualQuestion.success = '';
       this.manualQuestion.submitting = false;
+      this.followup.active = false;
+      this.followup.error = '';
+      this.followup.success = '';
     },
 
     async submitManualQuestion() {
