@@ -248,7 +248,8 @@ async def generate_followup_question(
         f"上一轮回答：{response.response_text}\n"
         "请直接输出一个简短且相关的后续问题，不要带前缀。"
     )
-    result = await ollama_client.generate(model_name, prompt)
+    messages = {"role": "user", "content": prompt}
+    result = await ollama_client.generate(model_name, messages)
     if result.error:
         raise HTTPException(status_code=500, detail=result.error)
 

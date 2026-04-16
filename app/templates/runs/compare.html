@@ -122,7 +122,21 @@
       <div class="flex-1">
         <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
           <div class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">测试 Prompt</div>
-          {% if tc.image_data %}
+          <!-- Show multiple images if available (new format) -->
+          {% if tc._images_json %}
+          <div class="mb-3 flex flex-wrap gap-2">
+            {% set images = tc.images_list %}
+            {% for img in images %}
+            <div>
+              <img src="data:{{ img.media_type }};base64,{{ img.data }}"
+                   class="max-h-48 w-auto rounded-lg border border-slate-200 object-contain"
+                   alt="测试图片" />
+              <span class="text-xs text-slate-400 mt-1 block">{{ img.media_type or '图片' }}</span>
+            </div>
+            {% endfor %}
+          </div>
+          <!-- Fallback to old single image format for backward compatibility -->
+          {% elif tc.image_data %}
           <div class="mb-3">
             <img src="data:{{ tc.image_media_type or 'image/png' }};base64,{{ tc.image_data }}"
                  class="max-h-48 w-auto rounded-lg border border-slate-200 object-contain"
