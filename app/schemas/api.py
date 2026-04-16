@@ -14,11 +14,19 @@ class RunStatus(str, Enum):
 
 # ─── Benchmark ────────────────────────────────────────────────────────────────
 
+class ImageData(BaseModel):
+    """Single image for multimodal models"""
+    data: str = Field(..., description="Base64-encoded image data (no data-URL prefix)")
+    media_type: str = Field(..., description="MIME type, e.g. 'image/png', 'image/jpeg'")
+
+
 class TestCaseCreate(BaseModel):
     prompt: str = Field(..., min_length=1)
     reference_answer: Optional[str] = None
     order_index: int = 0
-    # Optional base64-encoded image (raw, no data-URL prefix) for vision models
+    # Multiple images for vision models (e.g. llava)
+    images: Optional[List[ImageData]] = None
+    # Backward compatibility: single image support
     image_data: Optional[str] = None
     image_media_type: Optional[str] = None
 
@@ -31,8 +39,9 @@ class TestCaseOut(BaseModel):
     prompt: str
     reference_answer: Optional[str]
     order_index: int
-    image_data: Optional[str] = None
-    image_media_type: Optional[str] = None
+    images_json: Optional[str] = None  # JSON array of images
+    image_data: Optional[str] = None  # Backward compat
+    image_media_type: Optional[str] = None  # Backward compat
     created_at: datetime
 
 

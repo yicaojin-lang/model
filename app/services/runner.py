@@ -128,7 +128,18 @@ async def execute_run(run_id: int, context_mode: str = "full_history") -> None:
                     if context_mode == "full_history" and previous_responses:
                         prompt = build_full_history_prompt(tc, previous_responses)
 
-                    images = [tc.image_data] if tc.image_data else None
+                    # Collect all base64 images from the test case
+                    # images_list returns [{"data": "base64", "media_type": "image/png"}, ...]
+                    images = []
+                    try:
+                        for img in tc.images_list:
+                            if isinstance(img, dict) and "data" in img:
+                                images.append(img["data"])
+                    except Exception as e:
+                        logger.error("Failed to extract images for tc#%d: %s", tc.id, e)
+                    
+                    images = images if images else None
+                    
                     result_obj = await ollama_client.generate(
                         model_name, prompt, images=images
                     )
@@ -147,6 +158,8 @@ async def execute_run(run_id: int, context_mode: str = "full_history") -> None:
                     db.add(response)
                     # Commit after each response so progress is visible in real time
                     await db.commit()
+
+                    existing_response_map[(model_name, tc.id)] = response
 
             run.status = "completed"
             run.completed_at = datetime.now(tz=timezone.utc).replace(tzinfo=None)

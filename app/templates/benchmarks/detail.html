@@ -90,7 +90,17 @@
             {{ loop.index }}
           </span>
             <div class="flex-1 min-w-0">
-            {% if tc.image_data %}
+            <!-- Show multiple images if available (new format) -->
+            {% if tc._images_json %}
+            <div class="mb-2 flex flex-wrap gap-2">
+              {% set images = tc.images_list %}
+              {% for img in images %}
+              <img src="data:{{ img.media_type }};base64,{{ img.data }}"
+                   class="max-h-32 w-auto rounded-lg border border-slate-200 object-contain" alt="附加图片" />
+              {% endfor %}
+            </div>
+            <!-- Fallback to old single image format for backward compatibility -->
+            {% elif tc.image_data %}
             <div class="mb-2">
               <img src="data:{{ tc.image_media_type or 'image/png' }};base64,{{ tc.image_data }}"
                    class="max-h-32 w-auto rounded-lg border border-slate-200 object-contain" alt="附加图片" />

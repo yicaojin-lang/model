@@ -55,28 +55,37 @@
                 <textarea x-model="tc.reference_answer" rows="2" placeholder="期望输出或评分参考……"
                           class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent resize-y bg-white"></textarea>
               </div>
-              <!-- Image upload (for vision/multimodal models) -->
+              <!-- Images upload (for vision/multimodal models) -->
               <div>
                 <label class="text-xs font-medium text-slate-600 mb-1 block">
-                  附加图片（可选，用于 llava 等视觉模型）
+                  附加图片（可选，支持多张，用于 llava 等视觉模型）
                 </label>
-                <div x-show="!tc.image_preview" class="flex items-center gap-2">
-                  <label class="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 border border-dashed border-slate-300 rounded-lg text-xs text-slate-500 hover:border-indigo-400 hover:text-indigo-600 transition-colors bg-white">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
-                    </svg>
-                    选择图片
-                    <input type="file" accept="image/*" class="hidden" @change="handleImage(idx, $event)" />
-                  </label>
-                  <span class="text-xs text-slate-400">PNG / JPG / WEBP</span>
-                </div>
-                <div x-show="tc.image_preview" class="flex items-start gap-3">
-                  <img :src="tc.image_preview" class="h-20 w-auto rounded-lg border border-slate-200 object-cover" />
-                  <div>
-                    <div class="text-xs text-slate-500 mb-1" x-text="tc.image_media_type"></div>
-                    <button type="button" @click="clearImage(idx)"
-                            class="text-xs text-red-400 hover:text-red-600 transition-colors">× 移除图片</button>
+                <div class="space-y-2">
+                  <div class="flex items-center gap-2">
+                    <label class="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 border border-dashed border-slate-300 rounded-lg text-xs text-slate-500 hover:border-indigo-400 hover:text-indigo-600 transition-colors bg-white">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                      </svg>
+                      添加图片
+                      <input type="file" accept="image/*" multiple class="hidden" @change="handleImages(idx, $event)" />
+                    </label>
+                    <span class="text-xs text-slate-400">PNG / JPG / WEBP</span>
+                    <span class="text-xs text-slate-500" x-text="tc.images?.length || 0 + ' 张'"></span>
+                  </div>
+                  <!-- Thumbnails of uploaded images -->
+                  <div x-show="tc.images?.length > 0" class="flex flex-wrap gap-2">
+                    <template x-for="(img, imgIdx) in (tc.images || [])" :key="imgIdx">
+                      <div class="relative group">
+                        <img :src="img.preview" class="h-20 w-20 rounded-lg border border-slate-200 object-cover" />
+                        <button type="button" 
+                                @click="removeImage(idx, imgIdx)"
+                                class="absolute top-1 right-1 bg-red-500 text-white rounded w-5 h-5 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity">
+                          ×
+                        </button>
+                        <div class="absolute bottom-1 left-1 bg-black bg-opacity-50 text-white text-xs rounded px-1 opacity-0 group-hover:opacity-100 transition-opacity" x-text="imgIdx + 1"></div>
+                      </div>
+                    </template>
                   </div>
                 </div>
               </div>
@@ -113,33 +122,36 @@ function benchmarkForm() {
   return {
     name: '',
     description: '',
-    cases: [{ prompt: '', reference_answer: '', image_data: null, image_media_type: null, image_preview: null }],
+    cases: [{ prompt: '', reference_answer: '', images: [] }],
     saving: false,
     error: '',
 
     addCase() {
-      this.cases.push({ prompt: '', reference_answer: '', image_data: null, image_media_type: null, image_preview: null });
+      this.cases.push({ prompt: '', reference_answer: '', images: [] });
     },
 
-    handleImage(idx, event) {
-      const file = event.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const full = e.target.result; // "data:image/png;base64,ABC..."
-        const [header, data] = full.split(',');
-        const mediaType = header.match(/data:([^;]+)/)[1];
-        this.cases[idx].image_data = data;
-        this.cases[idx].image_media_type = mediaType;
-        this.cases[idx].image_preview = full;
-      };
-      reader.readAsDataURL(file);
+    handleImages(idx, event) {
+      const files = event.target.files;
+      if (!files) return;
+      
+      for (let file of files) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const full = e.target.result; // "data:image/png;base64,ABC..."
+          const [header, data] = full.split(',');
+          const mediaType = header.match(/data:([^;]+)/)[1];
+          this.cases[idx].images.push({
+            data: data,
+            media_type: mediaType,
+            preview: full,
+          });
+        };
+        reader.readAsDataURL(file);
+      }
     },
 
-    clearImage(idx) {
-      this.cases[idx].image_data = null;
-      this.cases[idx].image_media_type = null;
-      this.cases[idx].image_preview = null;
+    removeImage(caseIdx, imgIdx) {
+      this.cases[caseIdx].images.splice(imgIdx, 1);
     },
 
     removeCase(idx) {
@@ -163,8 +175,10 @@ function benchmarkForm() {
             prompt: c.prompt.trim(),
             reference_answer: c.reference_answer.trim() || null,
             order_index: i,
-            image_data: c.image_data || null,
-            image_media_type: c.image_media_type || null,
+            images: c.images.map(img => ({
+              data: img.data,
+              media_type: img.media_type,
+            })),
           })),
         };
         const resp = await apiFetch('/api/benchmarks', {

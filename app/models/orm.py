@@ -39,10 +39,14 @@ class TestCase(Base):
     prompt: Mapped[str] = mapped_column(Text, nullable=False)
     reference_answer: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     order_index: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    # Optional image for multimodal models (e.g. llava).
-    # Stored as raw base64 string (no data-URL prefix).
+    # Optional images for multimodal models (e.g. llava).
+    # Stored as JSON array: [{"data": "base64_string", "media_type": "image/png"}, ...]
+    # For backward compatibility, also accept single image_data / image_media_type fields.
+    _images_json: Mapped[Optional[str]] = mapped_column(
+        "images_json", Text, nullable=True
+    )
+    # Deprecated: kept for backward compatibility, use images_list property instead
     image_data: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    # MIME type of the image, e.g. "image/png", "image/jpeg"
     image_media_type: Mapped[Optional[str]] = mapped_column(
         String(50), nullable=True
     )
@@ -54,6 +58,24 @@ class TestCase(Base):
     responses: Mapped[List["ModelResponse"]] = relationship(
         back_populates="test_case"
     )
+
+    @property
+    def images_list(self) -> List[dict]:
+        """Return list of images: [{"data": "...", "media_type": "..."}, ...]"""
+        if self._images_json:
+            return json.loads(self._images_json)
+        # Backward compatibility: if only old single image_data field is set
+        if self.image_data:
+            return [{"data": self.image_data, "media_type": self.image_media_type or "image/png"}]
+        return []
+
+    @images_list.setter
+    def images_list(self, value: List[dict]) -> None:
+        """Set images from list of dicts"""
+        if value:
+            self._images_json = json.dumps(value, ensure_ascii=False)
+        else:
+            self._images_json = None
 
 
 class EvaluationRun(Base):

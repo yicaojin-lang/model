@@ -1,4 +1,5 @@
 from typing import List
+import json
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
@@ -71,11 +72,19 @@ async def create_benchmark(
     await db.flush()
 
     for idx, tc_data in enumerate(payload.test_cases):
+        # Handle multiple images or fallback to single image
+        images_json = None
+        if tc_data.images:
+            images_list = [{"data": img.data, "media_type": img.media_type} for img in tc_data.images]
+            images_json = json.dumps(images_list, ensure_ascii=False)
+        
         tc = TestCase(
             benchmark_id=benchmark.id,
             prompt=tc_data.prompt,
             reference_answer=tc_data.reference_answer,
             order_index=tc_data.order_index if tc_data.order_index else idx,
+            _images_json=images_json,
+            # Backward compatibility
             image_data=tc_data.image_data,
             image_media_type=tc_data.image_media_type,
         )
@@ -134,11 +143,19 @@ async def append_test_case(
     if order_index == 0 and max_index is not None:
         order_index = max_index + 1
 
+    # Handle multiple images or fallback to single image
+    images_json = None
+    if payload.images:
+        images_list = [{"data": img.data, "media_type": img.media_type} for img in payload.images]
+        images_json = json.dumps(images_list, ensure_ascii=False)
+
     test_case = TestCase(
         benchmark_id=benchmark_id,
         prompt=payload.prompt,
         reference_answer=payload.reference_answer,
         order_index=order_index,
+        _images_json=images_json,
+        # Backward compatibility
         image_data=payload.image_data,
         image_media_type=payload.image_media_type,
     )
