@@ -64,6 +64,38 @@
         <label class="text-sm font-medium text-slate-700">参考答案（可选）</label>
         <textarea x-model="newCase.reference_answer" rows="2" class="mt-2 w-full rounded-lg border border-slate-200 p-3 text-sm text-slate-800" placeholder="可选：输入参考答案或说明"></textarea>
       </div>
+      <!-- Images upload (for vision/multimodal models) -->
+      <div>
+        <label class="text-sm font-medium text-slate-700">附加图片（可选，支持多张，用于 llava 等视觉模型）</label>
+        <div class="space-y-2 mt-2">
+          <div class="flex items-center gap-2">
+            <label class="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 border border-dashed border-slate-300 rounded-lg text-xs text-slate-500 hover:border-indigo-400 hover:text-indigo-600 transition-colors">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+              </svg>
+              添加图片
+              <input type="file" accept="image/*" multiple class="hidden" @change="handleImages($event)" />
+            </label>
+            <span class="text-xs text-slate-400">PNG / JPG / WEBP</span>
+            <span class="text-xs text-slate-500" x-text="newCase.images?.length || 0 + ' 张'"></span>
+          </div>
+          <!-- Thumbnails of uploaded images -->
+          <div x-show="newCase.images?.length > 0" class="flex flex-wrap gap-2">
+            <template x-for="(img, imgIdx) in (newCase.images || [])" :key="imgIdx">
+              <div class="relative group">
+                <img :src="img.preview" class="h-20 w-20 rounded-lg border border-slate-200 object-cover" />
+                <button type="button" 
+                        @click="removeImage(imgIdx)"
+                        class="absolute top-1 right-1 bg-red-500 text-white rounded w-5 h-5 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity">
+                  ×
+                </button>
+                <div class="absolute bottom-1 left-1 bg-black bg-opacity-50 text-white text-xs rounded px-1 opacity-0 group-hover:opacity-100 transition-opacity" x-text="imgIdx + 1"></div>
+              </div>
+            </template>
+          </div>
+        </div>
+      </div>
       <div class="flex items-center gap-3">
         <button type="button" @click="submitCase({{ benchmark.id }})" :disabled="submitting" class="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-60">
           提交问题
@@ -178,6 +210,7 @@ function benchmarkDetail() {
       prompt: '',
       reference_answer: '',
       order_index: 0,
+      images: [],
     },
     cancelForm() {
       this.showForm = false;
@@ -186,7 +219,30 @@ function benchmarkDetail() {
       this.newCase.prompt = '';
       this.newCase.reference_answer = '';
       this.newCase.order_index = 0;
+      this.newCase.images = [];
       this.submitting = false;
+    },
+    handleImages(event) {
+      const files = event.target.files;
+      if (!files) return;
+      
+      for (let file of files) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const full = e.target.result;
+          const [header, data] = full.split(',');
+          const mediaType = header.match(/data:([^;]+)/)[1];
+          this.newCase.images.push({
+            data: data,
+            media_type: mediaType,
+            preview: full,
+          });
+        };
+        reader.readAsDataURL(file);
+      }
+    },
+    removeImage(imgIdx) {
+      this.newCase.images.splice(imgIdx, 1);
     },
     async submitCase(benchmarkId) {
       this.errorMessage = '';
@@ -204,6 +260,10 @@ function benchmarkDetail() {
             prompt: this.newCase.prompt,
             reference_answer: this.newCase.reference_answer || null,
             order_index: this.newCase.order_index,
+            images: this.newCase.images.map(img => ({
+              data: img.data,
+              media_type: img.media_type,
+            })),
           }),
         });
         if (!resp.ok) {
