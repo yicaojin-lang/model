@@ -148,6 +148,12 @@ async def execute_run(run_id: int, context_mode: str = "full_history") -> None:
                     except Exception as e:
                         logger.error("Failed to extract images for tc#%d: %s", tc.id, e)
 
+                    # #region agent log
+                    import time as _t, json as _j
+                    with open('/Users/a1234/Documents/project/modelTool/.cursor/debug-f079a2.log', 'a') as _f:
+                        _f.write(_j.dumps({"sessionId":"f079a2","hypothesisId":"H-B,H-C","location":"runner.py:execute_run","message":"images loaded from db for tc","data":{"tc_id":tc.id,"_images_json_raw":tc._images_json[:80] if tc._images_json else None,"images_list_count":len(tc.images_list),"final_images_count":len(images) if images else 0,"first_img_prefix":images[0][:30] if images else None},"timestamp":int(_t.time()*1000)}) + '\n')
+                    # #endregion
+
                     images = images if images else None
                     
                     result_obj = await ollama_client.generate(
