@@ -128,16 +128,26 @@ async def execute_run(run_id: int, context_mode: str = "full_history") -> None:
                     if context_mode == "full_history" and previous_responses:
                         prompt = build_full_history_prompt(tc, previous_responses)
 
-                    # Collect all base64 images from the test case
-                    # images_list returns [{"data": "base64", "media_type": "image/png"}, ...]
+                    # Collect base64 images: current test case first, then any
+                    # previous test cases that had images (needed so the model can
+                    # still "see" images referenced in the combined history prompt).
                     images = []
                     try:
                         for img in tc.images_list:
                             if isinstance(img, dict) and "data" in img:
                                 images.append(img["data"])
+                        if context_mode == "full_history" and previous_responses:
+                            seen = {img["data"][:32] for img in tc.images_list if isinstance(img, dict) and "data" in img}
+                            for prev_resp in previous_responses:
+                                for img in prev_resp.test_case.images_list:
+                                    if isinstance(img, dict) and "data" in img:
+                                        fingerprint = img["data"][:32]
+                                        if fingerprint not in seen:
+                                            images.append(img["data"])
+                                            seen.add(fingerprint)
                     except Exception as e:
                         logger.error("Failed to extract images for tc#%d: %s", tc.id, e)
-                    
+
                     images = images if images else None
                     
                     result_obj = await ollama_client.generate(
