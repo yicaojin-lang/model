@@ -83,12 +83,6 @@ class OllamaClient:
             if images:
                 payload["images"] = images
 
-            # #region agent log
-            import time as _t, json as _j
-            with open('/Users/a1234/Documents/project/modelTool/.cursor/debug-f079a2.log', 'a') as _f:
-                _f.write(_j.dumps({"sessionId":"f079a2","hypothesisId":"H-D,H-E","location":"ollama.py:generate","message":"ollama payload about to send","data":{"model":model,"images_in_payload":"images" in payload,"images_count":len(payload.get("images",[])) if payload.get("images") else 0,"first_img_prefix":payload["images"][0][:30] if payload.get("images") else None},"timestamp":int(_t.time()*1000)}) + '\n')
-            # #endregion
-
             try:
                 resp = await client.post(
                     f"{self.base_url}/api/generate", json=payload

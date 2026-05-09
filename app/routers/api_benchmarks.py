@@ -78,12 +78,6 @@ async def create_benchmark(
             images_list = [{"data": img.data, "media_type": img.media_type} for img in tc_data.images]
             images_json = json.dumps(images_list, ensure_ascii=False)
 
-        # #region agent log
-        import time as _t, json as _j
-        with open('/Users/a1234/Documents/project/modelTool/.cursor/debug-f079a2.log', 'a') as _f:
-            _f.write(_j.dumps({"sessionId":"f079a2","hypothesisId":"H-A","location":"api_benchmarks.py:create_benchmark","message":"tc_data images received","data":{"tc_idx":idx,"images_count":len(tc_data.images) if tc_data.images else 0,"images_json_set":images_json is not None,"images_json_len":len(images_json) if images_json else 0},"timestamp":int(_t.time()*1000)}) + '\n')
-        # #endregion
-
         tc = TestCase(
             benchmark_id=benchmark.id,
             prompt=tc_data.prompt,
@@ -154,12 +148,6 @@ async def append_test_case(
     if payload.images:
         images_list = [{"data": img.data, "media_type": img.media_type} for img in payload.images]
         images_json = json.dumps(images_list, ensure_ascii=False)
-
-    # #region agent log
-    import time as _t, json as _j
-    with open('/Users/a1234/Documents/project/modelTool/.cursor/debug-f079a2.log', 'a') as _f:
-        _f.write(_j.dumps({"sessionId":"f079a2","hypothesisId":"H-A","location":"api_benchmarks.py:append_test_case","message":"append tc images received","data":{"images_count":len(payload.images) if payload.images else 0,"images_json_set":images_json is not None,"images_json_len":len(images_json) if images_json else 0},"timestamp":int(_t.time()*1000)}) + '\n')
-    # #endregion
 
     test_case = TestCase(
         benchmark_id=benchmark_id,

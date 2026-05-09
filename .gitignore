@@ -10,6 +10,9 @@ __pycache__/
 *.pyd
 *.so
 
+# Local nested copy (has its own .git); not part of this repo
+model/
+
 # Database (local data, do not share)
 data/*.db
 data/*.sqlite
